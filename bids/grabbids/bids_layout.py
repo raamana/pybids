@@ -102,6 +102,78 @@ class BIDSLayout(Layout):
                                          dynamic_getters=True, include=include,
                                          exclude=exclude, **kwargs)
 
+
+    def traverse(self, modalities='func', types='bold',
+                 subjects=None, sessions=None, runs=None,
+                 tasks=None, events=None, extensions=('nii', 'nii.gz'),
+                 **kwargs):
+        """
+        Dataset traverser.
+
+        Args:
+            subjects: list of subjects
+            sessions: list of sessions
+            runs: list of runs
+            ...
+            kwargs : values for the particular type chosen.
+
+        Returns:
+            tuple of existing combinations
+                first item: list of type names identifying the file
+                second item: path to the file identified by the above types.
+
+        """
+
+        meta_types = {'modality'  : modalities,
+                      'type'      : types,
+                      'extensions': extensions,
+                      'subjects'  : subjects,
+                      'sessions'  : sessions,
+                      'runs'      : runs,
+                      'tasks'     : tasks,
+                      'events'    : events}
+        meta_types.update(kwargs)
+        non_empty_types = {type_: values for type_, values in meta_types.items() if values}
+
+        __FIELDS_TO_IGNORE__ = ('filename', 'modality', 'type')
+        __TYPES__ = ['subjects', 'sessions', 'tasks', 'runs', 'events']
+
+        results = self.get(**non_empty_types)
+        if len(results) < 1:
+            print('No results found!')
+            raise StopIteration
+
+        common_field_set = self._set_f7(results[0]._fields)
+        if len(results) > 1:
+            for res in results[1:]:
+                _field_set = self._set_f7(res._fields)
+                common_field_set = [ff for ff in common_field_set if ff in _field_set]
+
+        final_fields = [ unit for unit in common_field_set if unit not in __FIELDS_TO_IGNORE__ ]
+        # TODO final_fields can still have duplicates like: ( 'acquisition', 'acq'); handle it.
+
+        if len(final_fields) < 1:
+            raise StopIteration
+
+        print('Dataset will be traversed for different values of:\n {}'.format(final_fields))
+        unit_paths = [[[file.__getattribute__(unit) for unit in final_fields], file.filename] for file in results]
+
+        for unit_names, its_path in unit_paths:
+            yield unit_names, its_path
+
+    @staticmethod
+    def _set_f7(seq):
+        """
+        Utility to preserver order while making a set.
+
+        Copied from Markus Jarderot's answer at
+         https://stackoverflow.com/questions/480214/how-do-you-remove-duplicates-from-a-list-in-whilst-preserving-order
+
+        """
+        seen = set()
+        seen_add = seen.add
+        return [x for x in seq if not (x in seen or seen_add(x))]
+
     def _validate_file(self, f):
         # If validate=True then checks files according to BIDS and
         # returns False if file doesn't fit BIDS specification
